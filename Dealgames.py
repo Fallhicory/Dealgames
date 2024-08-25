@@ -16,7 +16,8 @@ def search_all_sites():
     results_text.delete('1.0', tk.END)  # Clear previous results
     threading.Thread(target=lambda: search_g2a(game_name)).start()
     threading.Thread(target=lambda: search_eneba(game_name)).start()
-
+    threading.Thread(target=lambda: search_gamivo(game_name)).start()
+    threading.Thread(target=lambda: search_indiegala(game_name)).start()
 # GUI setup
 fen_main = tk.Tk()
 fen_main.title("DealGames")
@@ -41,17 +42,10 @@ search_button.grid(row=0, column=1, padx=10, pady=5)
 # Text widget to display results
 scroll = ttk.Scrollbar(results,orient='vertical')
 scroll.pack(side="right",fill="y")
-results_text = tk.Text(results, height=35, width=170,yscrollcommand=scroll.set, wrap="none")
+results_text = tk.Text(results, height=35, width=170,yscrollcommand=scroll.set, wrap="none", font=("helvetica", 12))
 results_text.pack(padx=10, pady=(0, 10))
 scroll.config(command=results_text.yview)
 results.pack()
-
-def search_all_sites():
-    game_name = search_bar.get()
-    print(f"Searching for game: {game_name} ...")
-    results_text.delete('1.0', tk.END)  # Clear previous results
-    threading.Thread(target=lambda: search_g2a(game_name)).start()
-    threading.Thread(target=lambda: search_eneba(game_name)).start()
 
 def on_entry_click(event):
     """Erase text on click"""
@@ -88,7 +82,7 @@ def search_g2a(game_name):
     try:
         url = f"https://www.g2a.com/fr/category/games-c189?query={encoded_game_name}"
         driver.get(url)
-        time.sleep(1)
+        time.sleep(0.25)
 
         soup = BeautifulSoup(driver.page_source, 'html.parser')
 
@@ -151,5 +145,76 @@ def search_eneba(game_name):
         print(f"Error searching Eneba: {e}")
     finally:
         driver.quit()
+
+def search_gamivo(game_name):
+    encoded_game_name = urllib.parse.quote(game_name)
+    options = Options()
+    # options.add_argument('--headless') # Uncomment to run browser in headless mode
+    driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
+
+    # Ouvrir l'URL cible
+    url = f"https://www.gamivo.com/fr/search/{encoded_game_name}"
+    driver.get(url)
+
+    time.sleep(0.5)  # Ajuste le temps d'attente si nécessaire
+
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
+
+    # Fermer le navigateur
+    driver.quit()
+
+    all_games = soup.find_all('app-product-tile', class_="ng-star-inserted")
+    print(f"Nombre total de jeux trouvés : {len(all_games)}")
+
+    for game in all_games:
+        item = {}
+        title_tag = game.find("span", class_="ng-star-inserted")
+        if title_tag:
+            item['Title'] = title_tag.text.strip()
+        else:
+            print("Titre non trouvé pour cet élément.")
+
+        price_tag = game.find("span", class_="current-price__value")
+        if price_tag:
+            item['Price'] = price_tag.text.strip()
+        else:
+            print("Prix non trouvé pour cet élément.")
+
+        if 'Title' in item and 'Price' in item:
+            fen_main.after(0, lambda: results_text.insert(tk.END, f"[Gamivo] Game: {item['Title']} - Price: {item['Price']}\n"))
+
+def search_indiegala(game_name):
+    encoded_game_name = urllib.parse.quote(game_name)
+    options = Options()
+    # options.add_argument('--headless') # Uncomment to run browser in headless mode
+    driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
+    # Ouvrir l'URL cible
+    url = f"https://www.indiegala.com/search/{encoded_game_name}/store-games"
+    driver.get(url)
+    time.sleep(1)  # Ajuste le temps d'attente si nécessaire
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
+    # Fermer le navigateur
+    driver.quit()
+    all_games = soup.find_all('div', class_="relative main-list-results-item")
+    print(f"Nombre total de jeux trouvés : {len(all_games)}")
+    for game in all_games:
+        item = {}
+        title_tag = game.find("h3", class_="bg-gradient-red")
+        if title_tag:
+            item['Title'] = title_tag.text.strip()
+        else:
+            print("Titre non trouvé pour cet élément.")
+        price_tag = game.find("div", class_="main-list-results-item-price")
+        if price_tag:
+            item['Price'] = price_tag.text.strip()
+        else:
+            price_tag = game.find("div", class_="main-list-results-item-price-new")
+            if price_tag:
+                item['Price'] = price_tag.text.strip()
+            else:
+                print("Price not found for this element.")
+            
+        if 'Title' in item and 'Price' in item:
+            fen_main.after(0, lambda: results_text.insert(tk.END, f"[Indiegala] Game: {item['Title']} - Price: {item['Price']}\n"))
 
 fen_main.mainloop()
