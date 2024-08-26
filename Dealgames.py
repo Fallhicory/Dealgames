@@ -2,81 +2,68 @@ import ttkbootstrap as ttk
 import tkinter as tk
 from bs4 import BeautifulSoup
 from selenium import webdriver
-from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 import time
 import urllib.parse
 import threading
+import requests
+from PIL import Image, ImageTk
+from io import BytesIO
+
 
 def search_all_sites():
     game_name = search_bar.get()
     print(f"Searching for game: {game_name} ...")
-    results_text.delete('1.0', tk.END)  # Clear previous results
     threading.Thread(target=lambda: search_g2a(game_name)).start()
     threading.Thread(target=lambda: search_eneba(game_name)).start()
     threading.Thread(target=lambda: search_gamivo(game_name)).start()
     threading.Thread(target=lambda: search_indiegala(game_name)).start()
-# GUI setup
-fen_main = tk.Tk()
-fen_main.title("DealGames")
-fen_main.geometry("1031x693")
 
-search = ttk.Frame(master=fen_main)
-search.pack(pady=10)
-results = ttk.Frame(master=fen_main)
 
-# Search bar setup
-search_bar = ttk.Entry(search, width=50)
-search_bar.insert(0, 'Search your game here...')
-search_bar.bind('<FocusIn>', lambda event: on_entry_click(event))
-search_bar.bind('<FocusOut>', lambda event: on_focusout(event))
-search_bar.config(foreground='grey')
-search_bar.grid(row=0, column=0, padx=(5, 0), pady=15)
+def add_search_result(site_name, game_title, price, image_url=None):
+    frame = ttk.Frame(scrollable_frame)
+    frame.pack(fill=tk.X, padx=10, pady=5)
 
-# Button to trigger search
-search_button = ttk.Button(search, text="Search", command=search_all_sites)
-search_button.grid(row=0, column=1, padx=10, pady=5)
+    # Placeholder for game image
+    if image_url:
+        try:
+            response = requests.get(image_url)
+            image_data = response.content
+            pil_image = Image.open(BytesIO(image_data)).resize((125, 155))  # Redimensionner l'image à 115x155
+            img = ImageTk.PhotoImage(pil_image)
+            image_label = ttk.Label(frame, image=img)
+            image_label.image = img  # Pour éviter que l'image soit détruite par le garbage collector
+            image_label.grid(row=0, column=0, rowspan=2, padx=10, pady=10)
+        except Exception as e:
+            print(f"Erreur lors du téléchargement de l'image: {e}")
+            image_label = ttk.Label(frame, text="Image indisponible", width=20, relief="solid", borderwidth=1)
+            image_label.grid(row=0, column=0, rowspan=2, padx=10, pady=10)
+    else:
+        image_label = ttk.Label(frame, text="Image indisponible", width=20, relief="solid", borderwidth=1)
+        image_label.grid(row=0, column=0, rowspan=2, padx=10, pady=10)
 
-# Text widget to display results
-scroll = ttk.Scrollbar(results,orient='vertical')
-scroll.pack(side="right",fill="y")
-results_text = tk.Text(results, height=35, width=170,yscrollcommand=scroll.set, wrap="none", font=("helvetica", 12))
-results_text.pack(padx=10, pady=(0, 10))
-scroll.config(command=results_text.yview)
-results.pack()
+    # Game title and site name
+    title_label = ttk.Label(frame, text=game_title, font=("Helvetica", 14))
+    title_label.grid(row=0, column=1, sticky='w')
 
-def on_entry_click(event):
-    """Erase text on click"""
-    if search_bar.get() == 'Search your game here...':
-        search_bar.delete(0, tk.END)
-        search_bar.config(foreground='black')
+    site_label = ttk.Label(frame, text=site_name, font=("Helvetica", 10, "bold"), foreground='orange')
+    site_label.grid(row=1, column=1, sticky='w')
 
-def on_focusout(event):
-    """Put text when empty"""
-    if search_bar.get() == '':
-        search_bar.insert(0, 'Search your game here...')
-        search_bar.config(foreground='grey')
+    # Buy button
+    buy_button = ttk.Button(frame, text="Acheter", bootstyle="primary")
+    buy_button.grid(row=0, column=2, padx=10)
 
-def scroll_until_end(driver, scroll_pause_time=1):
-    last_height = driver.execute_script("return document.body.scrollHeight")
+    # Price label
+    price_label = ttk.Label(frame, text=price, font=("Helvetica", 12))
+    price_label.grid(row=1, column=2, padx=10)
 
-    while True:
-        # Scroll to the bottom of the page
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(scroll_pause_time)
-        
-        # Calculate new scroll height after scrolling
-        new_height = driver.execute_script("return document.body.scrollHeight")
-        if new_height == last_height:
-            break
-        last_height = new_height
 
 def search_g2a(game_name):
     encoded_game_name = urllib.parse.quote(game_name)
     options = Options()
-    # options.add_argument('--headless') # Uncomment to run browser in headless mode
+    # options.add_argument('--headless')  # Uncomment to run browser in headless mode
     driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
 
     try:
@@ -85,7 +72,6 @@ def search_g2a(game_name):
         time.sleep(0.25)
 
         soup = BeautifulSoup(driver.page_source, 'html.parser')
-
         all_games = soup.find_all('li', class_="sc-gIvpjk kgKIqe indexes__StyledProductBox-wklrsw-122 beGIwZ productCard")
         results = []
         
@@ -97,20 +83,23 @@ def search_g2a(game_name):
             price_tag = game.find("span", class_="sc-iqAclL sc-crzoAE dJFpVb eqnGHx sc-bqGGPW gjCrxq")
             if price_tag:
                 item['Price'] = price_tag.text.strip()
+            image_tag = game.find("img", src=True)  # Trouver l'image avec la balise <img>
+            if image_tag:
+                item['Image'] = image_tag['src']
             if 'Title' in item:
                 results.append(item)
-                # Update results in the text widget
-                fen_main.after(0, lambda: results_text.insert(tk.END, f"[G2A] Game: {item['Title']} - Price: {item['Price']}\n"))
+                fen_main.after(0, lambda: add_search_result("G2A", item['Title'], item['Price'], item.get('Image')))
         return results
     except Exception as e:
         print(f"Error searching G2A: {e}")
     finally:
         driver.quit()
 
+
 def search_eneba(game_name):
     encoded_game_name = urllib.parse.quote(game_name)
     options = Options()
-    # options.add_argument('--headless') # Uncomment to run browser in headless mode
+    # options.add_argument('--headless')  # Uncomment to run browser in headless mode
     driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
 
     try:
@@ -135,36 +124,32 @@ def search_eneba(game_name):
                 price_tag = game.find("span", class_="L5ErLT")
                 if price_tag:
                     item['Price'] = price_tag.text.strip()
-
+                image_tag = game.find("img", src=True)  # Trouver l'image avec la balise <img>
+                if image_tag:
+                    item['Image'] = image_tag['src']
                 if 'Title' in item and 'Price' in item:
-                    # Update results in the text widget
-                    fen_main.after(0, lambda: results_text.insert(tk.END, f"[Eneba] Game: {item['Title']} - Price: {item['Price']}\n"))
-
+                    fen_main.after(0, lambda: add_search_result("Eneba", item['Title'], item['Price'], item.get('Image')))
             page_number += 1
     except Exception as e:
         print(f"Error searching Eneba: {e}")
     finally:
         driver.quit()
 
+
 def search_gamivo(game_name):
     encoded_game_name = urllib.parse.quote(game_name)
     options = Options()
-    # options.add_argument('--headless') # Uncomment to run browser in headless mode
+    # options.add_argument('--headless')  # Uncomment to run browser in headless mode
     driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
 
-    # Ouvrir l'URL cible
     url = f"https://www.gamivo.com/fr/search/{encoded_game_name}"
     driver.get(url)
-
-    time.sleep(0.5)  # Ajuste le temps d'attente si nécessaire
-
+    time.sleep(0.5)  # Adjust the wait time if necessary
     soup = BeautifulSoup(driver.page_source, 'html.parser')
-
-    # Fermer le navigateur
     driver.quit()
 
     all_games = soup.find_all('app-product-tile', class_="ng-star-inserted")
-    print(f"Nombre total de jeux trouvés : {len(all_games)}")
+    print(f"Total number of games found: {len(all_games)}")
 
     for game in all_games:
         item = {}
@@ -172,49 +157,108 @@ def search_gamivo(game_name):
         if title_tag:
             item['Title'] = title_tag.text.strip()
         else:
-            print("Titre non trouvé pour cet élément.")
-
+            print("Title not found for this element.")
         price_tag = game.find("span", class_="current-price__value")
         if price_tag:
             item['Price'] = price_tag.text.strip()
         else:
-            print("Prix non trouvé pour cet élément.")
-
+            print("Price not found for this element.")
+        image_tag = game.find("img", src=True)  # Find the image with the <img> tag
+        if image_tag:
+            item['Image'] = image_tag['src']
         if 'Title' in item and 'Price' in item:
-            fen_main.after(0, lambda: results_text.insert(tk.END, f"[Gamivo] Game: {item['Title']} - Price: {item['Price']}\n"))
+            fen_main.after(0, lambda: add_search_result("Gamivo", item['Title'], item['Price'], item.get('Image')))
+
 
 def search_indiegala(game_name):
     encoded_game_name = urllib.parse.quote(game_name)
     options = Options()
-    # options.add_argument('--headless') # Uncomment to run browser in headless mode
+    # options.add_argument('--headless')  # Uncomment to run browser in headless mode
     driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
-    # Ouvrir l'URL cible
     url = f"https://www.indiegala.com/search/{encoded_game_name}/store-games"
     driver.get(url)
-    time.sleep(1)  # Ajuste le temps d'attente si nécessaire
+    time.sleep(1)  # Adjust the wait time if necessary
     soup = BeautifulSoup(driver.page_source, 'html.parser')
-    # Fermer le navigateur
     driver.quit()
+
     all_games = soup.find_all('div', class_="relative main-list-results-item")
-    print(f"Nombre total de jeux trouvés : {len(all_games)}")
+    print(f"Total number of games found: {len(all_games)}")
+
     for game in all_games:
         item = {}
         title_tag = game.find("h3", class_="bg-gradient-red")
         if title_tag:
             item['Title'] = title_tag.text.strip()
         else:
-            print("Titre non trouvé pour cet élément.")
-        price_tag = game.find("div", class_="main-list-results-item-price")
+            print("Title not found for this element.")
+        price_tag = game.find("div", class_="main-list-results-item-price-new")
         if price_tag:
             item['Price'] = price_tag.text.strip()
         else:
-            price_tag = game.find("div", class_="main-list-results-item-price-new")
-            if price_tag:
-                item['Price'] = price_tag.text.strip()
-            else:
-                print("Price not found for this element.")
-            
+            print("Price not found for this element.")
+        image_tag = game.find("img", src=True)  # Find the image with the <img> tag
+        if image_tag:
+            item['Image'] = image_tag['src']
         if 'Title' in item and 'Price' in item:
-            fen_main.after(0, lambda: results_text.insert(tk.END, f"[Indiegala] Game: {item['Title']} - Price: {item['Price']}\n"))
+            fen_main.after(0, lambda: add_search_result("Indiegala", item['Title'], item['Price'], item.get('Image')))
 
+
+def scroll_until_end(driver, scroll_pause_time):
+    """Scrolls down a webpage until the end."""
+    last_height = driver.execute_script("return document.body.scrollHeight")
+    while True:
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(scroll_pause_time)
+        new_height = driver.execute_script("return document.body.scrollHeight")
+        if new_height == last_height:
+            break
+        last_height = new_height
+
+def on_entry_click(event):
+    """Erase text on click"""
+    if search_bar.get() == 'Search your game here...':
+        search_bar.delete(0, tk.END)
+        search_bar.config(foreground='black')
+
+def on_focusout(event):
+    """Put text when empty"""
+    if search_bar.get() == '':
+        search_bar.insert(0, 'Search your game here...')
+        search_bar.config(foreground='grey')
+
+# UI Setup
+fen_main = ttk.Window( title="Dealgames", size=(1000, 600))
+
+search_frame = ttk.Frame(fen_main)
+search_frame.pack(pady=20)
+
+search_bar = ttk.Entry(search_frame, width=50)
+search_bar.insert(0, 'Search your game here...')
+search_bar.bind('<FocusIn>', lambda event: on_entry_click(event))
+search_bar.bind('<FocusOut>', lambda event: on_focusout(event))
+search_bar.config(foreground='grey')
+search_bar.grid(row=0, column=0, padx=(5, 0), pady=15)
+
+search_button = ttk.Button(search_frame, text="Rechercher", command=search_all_sites)
+search_button.grid(row=0, column=1, padx=5)
+
+# Reducing the width of the second column (containing the search button)
+search_frame.columnconfigure(1, minsize=0, weight=0)
+
+canvas = tk.Canvas(fen_main)
+scrollbar = ttk.Scrollbar(fen_main, bootstyle="round", command=canvas.yview)
+scrollable_frame = ttk.Frame(canvas)
+
+scrollable_frame.bind(
+    "<Configure>",
+    lambda e: canvas.configure(
+        scrollregion=canvas.bbox("all")
+    )
+)
+
+canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+canvas.configure(yscrollcommand=scrollbar.set)
+
+canvas.pack(side="left", fill="both", expand=True)
+scrollbar.pack(side="right", fill="y")
 fen_main.mainloop()
