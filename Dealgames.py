@@ -24,6 +24,7 @@ def search_all_sites():
     threading.Thread(target=lambda: search_eneba(game_name)).start()
     threading.Thread(target=lambda: search_gamivo(game_name)).start()
     threading.Thread(target=lambda: search_indiegala(game_name)).start()
+    threading.Thread(target=lambda: search_instant_gaming(game_name)).start()
 def clear_search_results():
     # Détruit tous les widgets enfants de scrollable_frame
     for widget in scrollable_frame.winfo_children():
@@ -83,12 +84,10 @@ def add_search_result(site_name, game_title, price, image_url=None,url=None):
     price_label.pack(padx=10, pady=5, anchor='e')  # Aligner le prix à droite
 
 
-
-
-
-def search_g2a(game_name):
+def search_g2a(game_name): #[1288:5636:0828/213018.417:ERROR:socket_manager.cc(147)] Failed to resolve address for ec2-52-23-111-175.compute-1.amazonaws.com., errorcode: -105
     encoded_game_name = urllib.parse.quote(game_name)
     options = Options()
+    options.add_argument("--disable-gpu")  # Disable GPU acceleration
     driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
 
     try:
@@ -116,9 +115,9 @@ def search_g2a(game_name):
                 image_tag = game.find("img", src=True)
                 if image_tag:
                     item['Image'] = image_tag['src']
-                link_tag = game.find("a", href=True)  # Extraction de l'URL du jeu
+                link_tag = game.find("a", href=True)
                 if link_tag:
-                    item['URL'] = "https://www.g2a.com" + link_tag['href']  # Construire l'URL complète
+                    item['URL'] = "https://www.g2a.com" + link_tag['href'] 
 
                 if 'Title' in item and 'Price' in item and 'URL' in item:
                     fen_main.after(0, lambda: add_search_result("G2A", item['Title'], item['Price'], item.get('Image'), item['URL']))
@@ -126,7 +125,7 @@ def search_g2a(game_name):
     except Exception as e:
         print(f"Error searching G2A: {e}")
     finally:
-        fen_main.after(0, lambda: progress_bar.step(1))  # Incrémente la barre de progression
+        fen_main.after(0, lambda: progress_bar.step(1)) 
         driver.quit()
 
 
@@ -134,6 +133,7 @@ def search_eneba(game_name):
     encoded_game_name = urllib.parse.quote(game_name)
     options = Options()
     # options.add_argument('--headless')  # Uncomment to run browser in headless mode
+    options.add_argument("--disable-gpu")  # Disable GPU acceleration
     driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
 
     try:
@@ -179,6 +179,7 @@ def search_gamivo(game_name):
     encoded_game_name = urllib.parse.quote(game_name)
     options = Options()
     # options.add_argument('--headless')  # Uncomment to run browser in headless mode
+    options.add_argument("--disable-gpu")  # Disable GPU acceleration
     driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
 
     try:
@@ -225,6 +226,7 @@ def search_gamivo(game_name):
 def search_indiegala(game_name):
     encoded_game_name = urllib.parse.quote(game_name)
     options = Options()
+    options.add_argument("--disable-gpu")  # Disable GPU acceleration
     driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
 
     try:
@@ -232,7 +234,7 @@ def search_indiegala(game_name):
         while True:
             url = f"https://www.indiegala.com/store?search={encoded_game_name}&page={page_number}"
             driver.get(url)
-            time.sleep(0.25)
+            time.sleep(10)
 
             soup = BeautifulSoup(driver.page_source, 'html.parser')
             all_games = soup.find_all('div', class_="product-tile game-tile")
@@ -265,7 +267,47 @@ def search_indiegala(game_name):
         driver.quit()
         fen_main.after(0, lambda: progress_bar.step(1))  # Incrémente la barre de progression
 
+def search_instant_gaming(game_name):
+    encoded_game_name = urllib.parse.quote_plus(game_name)
+    options = Options()
+    # options.add_argument('--headless')  # Uncomment to run browser in headless mode
+    options.add_argument("--disable-gpu")  # Disable GPU acceleration
+    driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
 
+    try:
+        page_number = 1
+        while True:
+            url = f"https://www.instant-gaming.com/fr/rechercher/?q={encoded_game_name}&page={page_number}"
+            driver.get(url)
+            time.sleep(0.25)
+
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
+            all_games = soup.find_all('li', class_="item force-badge")
+            results = []
+            
+            if not all_games:
+                print("End of results.")
+                break  # Break the loop when there are no more pages to scrape
+            
+            for game in all_games:
+                item = {}
+                title_tag = game.find("span", class_="Title")
+                if title_tag:
+                    item['Title'] = title_tag.text.strip()
+                price_tag = game.find("span", class_="price")
+                if price_tag:
+                    item['Price'] = price_tag.text.strip()
+                image_tag = game.find("img", src=True)  # Trouver l'image avec la balise <img>
+                if image_tag:
+                    item['Image'] = image_tag['src']
+                if 'Title' in item and 'Price' in item:
+                    results.append(item)
+                    fen_main.after(0, lambda: add_search_result("Instant Gaming", item['Title'], item['Price'], item.get('Image')))
+                page_number += 1
+    except Exception as e:
+        print(f"Error searching Instant Gaming : {e}")
+    finally:
+        driver.quit()
 
 def scroll_until_end(driver, scroll_pause_time):
     """Scrolls down a webpage until the end."""
@@ -290,6 +332,34 @@ def on_focusout(event):
         search_bar.insert(0, 'Search your game here...')
         search_bar.config(foreground='grey')
 
+searching = False
+
+def start_search():
+    global searching
+    searching = True
+    btn_stop.config(state="normal")  # Activer le bouton stop
+    search_button.config(state="disabled")  # Désactiver le bouton rechercher
+    perform_search()
+
+def stop_search():
+    global searching
+    searching = False
+    btn_stop.config(state="disabled")  # Désactiver le bouton stop
+    search_button.config(state="normal")  # Réactiver le bouton rechercher
+
+def perform_search():
+    global searching
+    while searching:
+        # Votre code de recherche ici
+        print("Recherche en cours...")  # Juste un exemple
+        # Ajoutez une condition ou un break pour sortir de la boucle si searching est False
+        if not searching:
+            break
+
+    btn_stop.config(state="disabled")  # Désactiver le bouton stop
+    search_button.config(state="normal")  # Réactiver le bouton rechercher
+    print("Recherche arrêtée.")
+
 # UI Setup
 fen_main = ttk.Window( title="Dealgames", size=(735, 890))
 search_frame = ttk.Frame(fen_main)
@@ -304,6 +374,8 @@ search_bar.grid(row=0, column=0, padx=(5, 0), pady=15)
 
 search_button = ttk.Button(search_frame, text="Rechercher", command=search_all_sites)
 search_button.grid(row=0, column=1, padx=5)
+btn_stop = ttk.Button(fen_main, text="Stop", command=stop_search, state="disabled")
+btn_stop.pack(padx=5)
 
 progress_frame = ttk.Frame(fen_main)
 progress_frame.pack(pady=(0, 5))  # Ajuste l'espace au besoin
